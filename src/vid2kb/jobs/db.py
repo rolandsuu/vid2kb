@@ -36,11 +36,11 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
 
 
-def create_run(prompt: str, source: str) -> Run:
+def create_run(prompt: str, source: str, run_id: Optional[str] = None) -> Run:
     import uuid
 
     init_db()
-    run = Run(id=uuid.uuid4().hex, prompt=prompt, source=source, status='queued')
+    run = Run(id=run_id or uuid.uuid4().hex, prompt=prompt, source=source, status='queued')
     with SessionLocal() as session:
         session.add(run)
         session.commit()
