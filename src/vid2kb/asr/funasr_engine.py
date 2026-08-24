@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from vid2kb.asr.base import ASREngine, Segment, Transcript
+
+_TOKEN_RE = re.compile(r'<\|[^|]*\|>')
 
 
 class FunASREngine(ASREngine):
@@ -21,6 +24,7 @@ class FunASREngine(ASREngine):
             text = res[0].get('text', '')
         else:
             text = str(res[0])
+        text = _TOKEN_RE.sub('', text).strip()
         if not text:
-            raise RuntimeError('funasr returned empty text')
+            raise ValueError('funasr returned empty transcription')
         return Transcript(language='zh', segments=[Segment(0.0, 0.0, text)])
