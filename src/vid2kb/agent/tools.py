@@ -64,6 +64,8 @@ def tool_planner(state: AgentState) -> dict:
         '如果有 document 但没有 markdown 则选 render；'
         '如果有 markdown 但没有 kb_doc_id 则选 ingest_kb；'
         '否则选 report。'
+        '如果某个阶段（ingest/transcribe/visual/compose/render/ingest_kb）'
+        '在错误记录中已经失败 2 次及以上，则不要重试该阶段，直接选 report。'
         '必须输出一个 json 对象，字段为 next 和 reason。'
     )
     user_message = (
@@ -86,6 +88,10 @@ def tool_planner(state: AgentState) -> dict:
         next_tool = data.get('next', 'report')
         if next_tool not in _ALLOWED_NEXT:
             next_tool = 'report'
+        if next_tool not in ('report', 'ask_user'):
+            fail_count = sum(1 for e in state.get('errors', []) if next_tool in e and 'failed' in e)
+            if fail_count >= 2:
+                next_tool = 'report'
         _audit(state, 'planner', 'done', note=f'next={next_tool}', seconds=time.time() - started)
         return {'next': next_tool, 'iterations': iterations + 1}
     except Exception as e:
@@ -106,15 +112,15 @@ def tool_ingest(state: AgentState) -> dict:
         else:
             path = copy_local_file(Path(src), store.raw)
         _audit(state, 'ingest', 'done', note=str(path), seconds=time.time() - started)
-        return {'video_path': str(path)}
+        return {'video_path': str(path), 'steps': ['ingest: ok']}
     except Exception as e:
         _audit(state, 'ingest', 'error', str(e), seconds=time.time() - started)
-        return {'errors': state.get('errors', []) + [f'ingest failed: {e}']}
+        return {'errors': state.get('errors', []) + [f'ingest failed: {e}'], 'steps': [f'ingest: failed: {e}']}
 
 
 def _transcribe_with_fallback(audio: Path, backend: str):
     order = ['funasr', 'whisper'] if backend != 'whisper' else ['whisper', 'funasr']
-    last_err: Exception | None = None
+    errors: list[str] = []
     for name in order:
         try:
             if name == 'funasr':
@@ -125,10 +131,10 @@ def _transcribe_with_fallback(audio: Path, backend: str):
                 from vid2kb.asr.whisper_engine import WhisperEngine
 
                 engine = WhisperEngine()
-            return engine.transcribe(audio)
+            return engine.transcribe(audio), errors
         except Exception as e:
-            last_err = e
-    raise RuntimeError(f'asr failed on all backends: {last_err}')
+            errors.append(f'asr {name} failed: {e}')
+    return None, errors
 
 
 def tool_transcribe(state: AgentState) -> dict:
@@ -142,12 +148,25 @@ def tool_transcribe(state: AgentState) -> dict:
         video = Path(state['video_path'])
         probe_duration(video)
         audio = extract_audio(video, store.audio / 'audio.wav')
-        transcript = _transcribe_with_fallback(audio, settings.asr_backend)
+        transcript, asr_errors = _transcribe_with_fallback(audio, settings.asr_backend)
+        if transcript is None:
+            _audit(state, 'transcribe', 'error', '; '.join(asr_errors), seconds=time.time() - started)
+            return {
+                'errors': state.get('errors', []) + [f'transcribe failed: {err}' for err in asr_errors],
+                'steps': [f'transcribe: failed: {asr_errors[-1]}'],
+            }
         _audit(state, 'transcribe', 'done', note=transcript.language, seconds=time.time() - started)
-        return {'transcript': transcript.text, 'transcript_language': transcript.language}
+        return {
+            'transcript': transcript.text,
+            'transcript_language': transcript.language,
+            'steps': ['transcribe: ok'],
+        }
     except Exception as e:
         _audit(state, 'transcribe', 'error', str(e), seconds=time.time() - started)
-        return {'errors': state.get('errors', []) + [f'transcribe failed: {e}']}
+        return {
+            'errors': state.get('errors', []) + [f'transcribe failed: {e}'],
+            'steps': [f'transcribe: failed: {e}'],
+        }
 
 
 def tool_visual(state: AgentState) -> dict:
@@ -163,13 +182,16 @@ def tool_visual(state: AgentState) -> dict:
         frames = sample_frames(video, store.frames, settings.frame_interval_seconds, settings.max_frames)
         if not frames:
             _audit(state, 'visual', 'error', 'no frames sampled', seconds=time.time() - started)
-            return {'errors': state.get('errors', []) + ['no frames sampled']}
+            return {
+                'errors': state.get('errors', []) + ['no frames sampled'],
+                'steps': ['visual: failed: no frames sampled'],
+            }
         timeline = analyze_frames(frames, state.get('user_prompt', ''), (state.get('transcript') or '')[:4000])
         _audit(state, 'visual', 'done', note=str(len(timeline.frames)), seconds=time.time() - started)
-        return {'timeline': timeline.model_dump()}
+        return {'timeline': timeline.model_dump(), 'steps': ['visual: ok']}
     except Exception as e:
         _audit(state, 'visual', 'error', str(e), seconds=time.time() - started)
-        return {'errors': state.get('errors', []) + [f'visual failed: {e}']}
+        return {'errors': state.get('errors', []) + [f'visual failed: {e}'], 'steps': [f'visual: failed: {e}']}
 
 
 def tool_compose(state: AgentState) -> dict:
@@ -189,10 +211,10 @@ def tool_compose(state: AgentState) -> dict:
         if problems:
             doc.warnings.extend(problems)
         _audit(state, 'compose', 'done', note=doc.doc_type, seconds=time.time() - started)
-        return {'document': doc.model_dump(), 'doc_spec': spec.model_dump()}
+        return {'document': doc.model_dump(), 'doc_spec': spec.model_dump(), 'steps': ['compose: ok']}
     except Exception as e:
         _audit(state, 'compose', 'error', str(e), seconds=time.time() - started)
-        return {'errors': state.get('errors', []) + [f'compose failed: {e}']}
+        return {'errors': state.get('errors', []) + [f'compose failed: {e}'], 'steps': [f'compose: failed: {e}']}
 
 
 def tool_render(state: AgentState) -> dict:
@@ -208,10 +230,10 @@ def tool_render(state: AgentState) -> dict:
         (store.out / 'document.md').write_text(markdown, encoding='utf-8')
         pdf = render_pdf(markdown, store.out / 'document.pdf')
         _audit(state, 'render', 'done', seconds=time.time() - started)
-        return {'markdown': markdown, 'pdf_path': str(pdf)}
+        return {'markdown': markdown, 'pdf_path': str(pdf), 'steps': ['render: ok']}
     except Exception as e:
         _audit(state, 'render', 'error', str(e), seconds=time.time() - started)
-        return {'errors': state.get('errors', []) + [f'render failed: {e}']}
+        return {'errors': state.get('errors', []) + [f'render failed: {e}'], 'steps': [f'render: failed: {e}']}
 
 
 def tool_ingest_kb(state: AgentState) -> dict:
@@ -230,10 +252,10 @@ def tool_ingest_kb(state: AgentState) -> dict:
         run_id = state['run_id']
         n = ingest_document(state['markdown'], metadata, doc_id=run_id)
         _audit(state, 'ingest_kb', 'done', note=str(n), seconds=time.time() - started)
-        return {'kb_doc_id': run_id, 'kb_node_count': n}
+        return {'kb_doc_id': run_id, 'kb_node_count': n, 'steps': ['ingest_kb: ok']}
     except Exception as e:
         _audit(state, 'ingest_kb', 'error', str(e), seconds=time.time() - started)
-        return {'errors': state.get('errors', []) + [f'ingest_kb failed: {e}']}
+        return {'errors': state.get('errors', []) + [f'ingest_kb failed: {e}'], 'steps': [f'ingest_kb: failed: {e}']}
 
 
 def tool_report(state: AgentState) -> dict:
@@ -256,10 +278,10 @@ def tool_report(state: AgentState) -> dict:
             'transcript_language': state.get('transcript_language'),
             'errors': state.get('errors', []),
             'warnings': document.get('warnings', []) if document else [],
-            'steps': state.get('steps', []),
+            'steps': [getattr(s, 'content', s) for s in (state.get('steps') or [])],
         }
         _audit(state, 'report', 'done', seconds=time.time() - started)
-        return {'final_report': report}
+        return {'final_report': report, 'steps': ['report: ok']}
     except Exception as e:
         _audit(state, 'report', 'error', str(e), seconds=time.time() - started)
-        return {'errors': state.get('errors', []) + [f'report failed: {e}']}
+        return {'errors': state.get('errors', []) + [f'report failed: {e}'], 'steps': [f'report: failed: {e}']}

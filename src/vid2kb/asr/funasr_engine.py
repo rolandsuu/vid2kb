@@ -17,5 +17,10 @@ class FunASREngine(ASREngine):
     def transcribe(self, audio: Path) -> Transcript:
         model = self._ensure_model()
         res = model.generate(input=str(audio), language='auto')
-        text = res[0]['text']
+        if isinstance(res[0], dict):
+            text = res[0].get('text', '')
+        else:
+            text = str(res[0])
+        if not text:
+            raise RuntimeError('funasr returned empty text')
         return Transcript(language='zh', segments=[Segment(0.0, 0.0, text)])

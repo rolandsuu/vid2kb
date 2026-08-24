@@ -15,10 +15,10 @@ class WhisperEngine(ASREngine):
         return WhisperModel(self.model_size, device=self.device)
 
     def transcribe(self, audio: Path) -> Transcript:
-        result = self._model_factory().transcribe(str(audio), word_timestamps=False)
+        segments_iter, info = self._model_factory().transcribe(str(audio), word_timestamps=False)
         segments = [
-            Segment(start=seg['start'], end=seg['end'], text=seg['text'].strip())
-            for seg in result['segments']
-            if seg['text'].strip()
+            Segment(start=seg.start, end=seg.end, text=seg.text.strip())
+            for seg in segments_iter
+            if seg.text.strip()
         ]
-        return Transcript(language=result['language'], segments=segments)
+        return Transcript(language=info.language, segments=segments)

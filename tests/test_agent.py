@@ -148,3 +148,18 @@ def test_loop_guard(monkeypatch):
 
     assert any('loop guard' in e for e in result['errors'])
     assert result['iterations'] <= 13
+
+
+def test_planner_gives_up_after_two_failures(monkeypatch):
+    _fake_llm_client(monkeypatch, '{"next": "transcribe", "reason": "retry"}')
+
+    g = graph_mod.build_graph()
+    state = _initial('planner-cap')
+    state['errors'] = [
+        'transcribe failed: asr funasr failed: x',
+        'transcribe failed: asr whisper failed: y',
+    ]
+    result = g.invoke(state, config=_thread())
+
+    assert result['next'] == 'report'
+    assert result['final_report'] is not None

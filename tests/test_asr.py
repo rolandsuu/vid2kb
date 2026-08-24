@@ -21,15 +21,25 @@ def test_transcript_text_joins_segments():
 
 
 def test_whisper_engine_mocked():
+    class FakeSegment:
+        pass
+
+    class FakeInfo:
+        pass
+
     class FakeModel:
         def transcribe(self, audio, word_timestamps=False):
-            return {
-                'language': 'en',
-                'segments': [
-                    {'start': 0.0, 'end': 1.0, 'text': 'hello'},
-                    {'start': 1.0, 'end': 2.0, 'text': ''},
-                ],
-            }
+            seg1 = FakeSegment()
+            seg1.start = 0.0
+            seg1.end = 1.0
+            seg1.text = 'hello'
+            seg2 = FakeSegment()
+            seg2.start = 1.0
+            seg2.end = 2.0
+            seg2.text = ''
+            info = FakeInfo()
+            info.language = 'en'
+            return ([seg1, seg2], info)
 
     class FakeWhisper(WhisperEngine):
         def _model_factory(self):
