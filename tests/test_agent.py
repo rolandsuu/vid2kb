@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
 from uuid import uuid4
 
 from vid2kb.agent import graph as graph_mod
 from vid2kb.agent import tools
+from vid2kb.jobs.worker import _json_safe
 
 
 def _fake_llm_client(monkeypatch, content: str):
@@ -148,6 +151,12 @@ def test_loop_guard(monkeypatch):
 
     assert any('loop guard' in e for e in result['errors'])
     assert result['iterations'] <= 13
+
+
+def test_json_safe_handles_message_like_objects():
+    result = {'steps': [SimpleNamespace(content='hi')]}
+    out = json.dumps(_json_safe(result), ensure_ascii=False)
+    assert 'hi' in out
 
 
 def test_planner_gives_up_after_two_failures(monkeypatch):

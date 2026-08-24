@@ -99,3 +99,32 @@ def test_analyze_frames_all_fail_raises(dummy_frames, monkeypatch):
 
     with pytest.raises(RuntimeError, match='vision analysis failed'):
         analyze_frames(dummy_frames, 'describe these', 'hello transcript')
+
+
+def test_analyze_frames_single_description_fallback(dummy_frames, monkeypatch):
+    fake = FakeClient(['{"description": "测试画面"}'])
+    monkeypatch.setattr('vid2kb.llm.dashscope_client', lambda: fake)
+
+    result = analyze_frames(dummy_frames, 'describe these', 'hello transcript')
+
+    assert len(result.frames) == 1
+    assert result.frames[0].description == '测试画面'
+    assert any('single description' in w for w in result.warnings)
+
+
+def test_analyze_frames_json_fence_stripped(dummy_frames, monkeypatch):
+    content = (
+        '```json\n'
+        '{"summary": "s", "frames": [{"index": 0, "timestamp_seconds": 0.0, '
+        '"description": "d", "visible_text": [], "actions": [], "confidence": 0.9}], '
+        '"warnings": []}\n'
+        '```'
+    )
+    fake = FakeClient([content])
+    monkeypatch.setattr('vid2kb.llm.dashscope_client', lambda: fake)
+
+    result = analyze_frames(dummy_frames, 'describe these', 'hello transcript')
+
+    assert len(result.frames) == 1
+    assert result.frames[0].description == 'd'
+    assert result.summary == 's'
