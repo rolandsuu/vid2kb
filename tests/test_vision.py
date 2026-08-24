@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -99,6 +100,26 @@ def test_analyze_frames_all_fail_raises(dummy_frames, monkeypatch):
 
     with pytest.raises(RuntimeError, match='vision analysis failed'):
         analyze_frames(dummy_frames, 'describe these', 'hello transcript')
+
+
+def test_parse_json_handles_string_lists(monkeypatch):
+    """Qwen-VL returns visible_text/actions as '' strings; must coerce to lists."""
+    from vid2kb.vision.qwen_vl import _build_timeline
+    import tempfile
+    p = Path(tempfile.mkdtemp()) / 'f.jpg'
+    p.write_bytes(b'x')
+    obj = {
+        'summary': 's',
+        'frames': [{
+            'index': 0, 'timestamp_seconds': 0.0, 'description': 'd',
+            'visible_text': '', 'actions': 'something', 'confidence': '0.9',
+        }],
+        'warnings': [],
+    }
+    tl = _build_timeline(obj, [(0, 0.0, p)])
+    assert tl.frames[0].visible_text == []
+    assert tl.frames[0].actions == ['something']
+    assert tl.frames[0].confidence == 0.9
 
 
 def test_analyze_frames_single_description_fallback(dummy_frames, monkeypatch):

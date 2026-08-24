@@ -33,12 +33,29 @@ def _parse_json(raw: str) -> dict:
         raise ValueError(f'JSON decode failed: {e}; raw preview: {text[:400]!r}') from e
 
 
+def _coerce_frame(f: dict) -> dict:
+    """Tolerate LLM output quirks: visible_text/actions may come back as strings
+    (often empty) instead of lists; confidence may be a string."""
+    d = dict(f)
+    for k in ('visible_text', 'actions'):
+        v = d.get(k)
+        if isinstance(v, str):
+            d[k] = [v] if v.strip() else []
+    conf = d.get('confidence')
+    if conf is not None:
+        try:
+            d['confidence'] = float(conf)
+        except (TypeError, ValueError):
+            d['confidence'] = 0.5
+    return d
+
+
 def _build_timeline(obj: dict, batch: list[tuple[int, float, Path]]) -> VisualTimeline:
     summary = obj.get('summary', '') if isinstance(obj.get('summary'), str) else ''
     warnings = list(obj.get('warnings') or [])
 
     if 'frames' in obj and obj['frames'] is not None:
-        frames = [FrameDescription.model_validate(f) for f in obj['frames']]
+        frames = [FrameDescription.model_validate(_coerce_frame(f)) for f in obj['frames']]
         if len(frames) < len(batch):
             warnings.append(f'expected {len(batch)} frames, got {len(frames)}')
     elif 'description' in obj:
