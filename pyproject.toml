@@ -26,6 +26,10 @@ dependencies = [
     "python-dotenv>=1.0",
     "faster-whisper>=1.2.1",
     "funasr>=1.4.3",
+    "llama-index>=0.11",
+    "llama-index-embeddings-ollama>=0.9.0",
+    "llama-index-vector-stores-postgres>=0.8.1",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
