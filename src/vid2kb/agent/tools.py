@@ -43,7 +43,7 @@ def _state_summary(state: AgentState) -> dict:
     }
 
 
-_ALLOWED_NEXT = {'ingest', 'transcribe', 'visual', 'compose', 'render', 'ingest_kb', 'voiceover', 'report', 'ask_user'}
+_ALLOWED_NEXT = {'ingest', 'transcribe', 'visual', 'compose', 'render', 'ingest_kb', 'voiceover', 'clips', 'report', 'ask_user'}
 
 
 def tool_planner(state: AgentState) -> dict:
