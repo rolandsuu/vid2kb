@@ -80,7 +80,7 @@ def analyze_frames(
     user_prompt: str,
     transcript_excerpt: str,
 ) -> VisualTimeline:
-    from vid2kb.llm import dashscope_client
+    from vid2kb.llm import dashscope_client, record_usage
 
     system_prompt = (
         '你是一个视频画面分析助手。请输出结构化的 JSON，格式与 VisualTimeline 一致：'
@@ -134,6 +134,7 @@ def analyze_frames(
                 messages=messages,
                 response_format={'type': 'json_object'},
             )
+            record_usage('dashscope', response)
             raw = response.choices[0].message.content
             obj = _parse_json(raw)
             partial = _build_timeline(obj, batch)

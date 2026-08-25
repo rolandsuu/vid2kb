@@ -19,7 +19,7 @@ class DocSpec(BaseModel):
 
 
 def plan_document(user_prompt: str, transcript: str, timeline_summary: str) -> DocSpec:
-    from vid2kb.llm import deepseek_client
+    from vid2kb.llm import deepseek_client, record_usage
 
     system_prompt = (
         '你是一个文档规划助手。请根据用户需求和内容信号，推断文档类型'
@@ -47,6 +47,7 @@ def plan_document(user_prompt: str, transcript: str, timeline_summary: str) -> D
         ],
         response_format={'type': 'json_object'},
     )
+    record_usage('deepseek', response)
     raw = response.choices[0].message.content
 
     try:

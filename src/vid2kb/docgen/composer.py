@@ -38,7 +38,7 @@ def compose_document(
     timeline: VisualTimeline,
     user_prompt: str,
 ) -> KnowledgeDocument:
-    from vid2kb.llm import deepseek_client
+    from vid2kb.llm import deepseek_client, record_usage
 
     system_prompt = (
         '你是一个知识文档撰写助手。严格遵循以下规则：'
@@ -85,6 +85,7 @@ def compose_document(
         messages=messages,
         response_format={'type': 'json_object'},
     )
+    record_usage('deepseek', response)
     raw = response.choices[0].message.content
 
     try:
@@ -99,6 +100,7 @@ def compose_document(
             messages=messages,
             response_format={'type': 'json_object'},
         )
+        record_usage('deepseek', response)
         raw2 = response.choices[0].message.content
         try:
             return _parse(raw2)

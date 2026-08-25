@@ -11,6 +11,7 @@ from vid2kb.agent.state import AgentState
 def _audit(state: AgentState, stage: str, status: str, note: str = '', seconds: float = 0.0) -> None:
     try:
         from vid2kb.config import settings
+        from vid2kb.llm import drain_usage
 
         run_id = state.get('run_id', 'unknown')
         path = Path(settings.data_dir) / 'runs' / run_id / 'audit.jsonl'
@@ -22,6 +23,9 @@ def _audit(state: AgentState, stage: str, status: str, note: str = '', seconds: 
             'seconds': seconds,
             'note': note,
         }
+        usage = drain_usage()
+        if usage:
+            record['tokens'] = usage
         with path.open('a', encoding='utf-8') as f:
             f.write(json.dumps(record, ensure_ascii=False) + '\n')
     except Exception:
@@ -44,7 +48,7 @@ _ALLOWED_NEXT = {'ingest', 'transcribe', 'visual', 'compose', 'render', 'ingest_
 
 def tool_planner(state: AgentState) -> dict:
     from vid2kb.config import settings
-    from vid2kb.llm import deepseek_client
+    from vid2kb.llm import deepseek_client, record_usage
 
     iterations = state.get('iterations', 0)
     if iterations > 12:
@@ -83,6 +87,7 @@ def tool_planner(state: AgentState) -> dict:
             ],
             response_format={'type': 'json_object'},
         )
+        record_usage('deepseek', response)
         raw = response.choices[0].message.content
         data = json.loads(raw)
         next_tool = data.get('next', 'report')
