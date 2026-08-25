@@ -33,6 +33,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.1.1",
     "torch>=2.13.0",
     "torchaudio>=2.11.0",
+    "temporalio>=1.31.0",
 ]
 
 [project.optional-dependencies]

@@ -24,5 +24,7 @@ class Settings:
     asr_backend: str = os.getenv('ASR_BACKEND', 'funasr')
     max_frames: int = int(os.getenv('MAX_FRAMES', '30'))
     frame_interval_seconds: int = int(os.getenv('FRAME_INTERVAL_SECONDS', '3'))
+    run_driver: str = os.getenv('RUN_DRIVER', 'background')
+    temporal_address: str = os.getenv('TEMPORAL_ADDRESS', '127.0.0.1:7233')
 
 settings = Settings()

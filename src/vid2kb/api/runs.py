@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from vid2kb.config import settings
 from vid2kb.jobs import db
 from vid2kb.jobs.worker import run_agent
 
@@ -44,9 +45,32 @@ def _parse_multipart(body: bytes, content_type: str) -> dict:
     return result
 
 
+async def _run_temporal(run_id: str, prompt: str, source: str) -> None:
+    from vid2kb.temporal import client as temporal_client
+
+    try:
+        await temporal_client.start_run(run_id, prompt, source)
+        db.update_run(run_id, status='running')
+        result = await temporal_client.get_run_result(run_id)
+        if result.get('status') == 'failed':
+            db.update_run(
+                run_id,
+                status='failed',
+                result_json=json.dumps(result, ensure_ascii=False),
+                error='; '.join(result.get('errors', [])),
+            )
+        else:
+            db.update_run(run_id, status='done', result_json=json.dumps(result, ensure_ascii=False))
+    except Exception as e:
+        db.update_run(run_id, status='failed', error=str(e))
+
+
 def _queue(run_id: str, prompt: str, source: str, background_tasks: BackgroundTasks) -> dict:
     db.create_run(prompt=prompt, source=source, run_id=run_id)
-    background_tasks.add_task(run_agent, run_id, prompt, source)
+    if settings.run_driver == 'temporal':
+        background_tasks.add_task(_run_temporal, run_id, prompt, source)
+    else:
+        background_tasks.add_task(run_agent, run_id, prompt, source)
     return {'run_id': run_id, 'status': 'queued'}
 
 
