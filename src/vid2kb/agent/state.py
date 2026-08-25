@@ -19,6 +19,8 @@ class AgentState(TypedDict, total=False):
     pdf_path: Optional[str]
     kb_doc_id: Optional[str]
     kb_node_count: Optional[int]
+    voiceover: Optional[dict]
+    clips: Optional[list]
     errors: list[str]
     steps: Annotated[list[str], add_messages]
     next: Optional[str]

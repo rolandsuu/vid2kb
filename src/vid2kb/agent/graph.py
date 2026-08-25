@@ -17,6 +17,7 @@ def build_graph(checkpointer=None):
     g.add_node('compose', tools.tool_compose)
     g.add_node('render', tools.tool_render)
     g.add_node('ingest_kb', tools.tool_ingest_kb)
+    g.add_node('voiceover', tools.tool_voiceover)
     g.add_node('report', tools.tool_report)
 
     g.add_edge(START, 'planner')
@@ -31,12 +32,13 @@ def build_graph(checkpointer=None):
             'compose': 'compose',
             'render': 'render',
             'ingest_kb': 'ingest_kb',
+            'voiceover': 'voiceover',
             'report': 'report',
             'ask_user': END,
         },
     )
 
-    for node in ('ingest', 'transcribe', 'visual', 'compose', 'render', 'ingest_kb'):
+    for node in ('ingest', 'transcribe', 'visual', 'compose', 'render', 'ingest_kb', 'voiceover'):
         g.add_edge(node, 'planner')
     g.add_edge('report', END)
 

@@ -32,5 +32,8 @@ class Settings:
     s3_secret_key: str = os.getenv('S3_SECRET_KEY', 'minioadmin')
     s3_bucket: str = os.getenv('S3_BUCKET', 'vid2kb')
     s3_region: str = os.getenv('S3_REGION', 'us-east-1')
+    tts_model: str = os.getenv('TTS_MODEL', 'cosyvoice-v2')
+    tts_voice: str = os.getenv('TTS_VOICE', 'longxiaochun_v2')
+    tts_sample_rate: int = int(os.getenv('TTS_SAMPLE_RATE', '48000'))
 
 settings = Settings()

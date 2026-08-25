@@ -43,7 +43,7 @@ def _state_summary(state: AgentState) -> dict:
     }
 
 
-_ALLOWED_NEXT = {'ingest', 'transcribe', 'visual', 'compose', 'render', 'ingest_kb', 'report', 'ask_user'}
+_ALLOWED_NEXT = {'ingest', 'transcribe', 'visual', 'compose', 'render', 'ingest_kb', 'voiceover', 'report', 'ask_user'}
 
 
 def tool_planner(state: AgentState) -> dict:
@@ -67,6 +67,7 @@ def tool_planner(state: AgentState) -> dict:
         '如果有 timeline 但没有 document 则选 compose；'
         '如果有 document 但没有 markdown 则选 render；'
         '如果有 markdown 但没有 kb_doc_id 则选 ingest_kb；'
+        '如果用户要求配音则选 voiceover；'
         '否则选 report。'
         '如果某个阶段（ingest/transcribe/visual/compose/render/ingest_kb）'
         '在错误记录中已经失败 2 次及以上，则不要重试该阶段，直接选 report。'
@@ -239,6 +240,84 @@ def tool_render(state: AgentState) -> dict:
     except Exception as e:
         _audit(state, 'render', 'error', str(e), seconds=time.time() - started)
         return {'errors': state.get('errors', []) + [f'render failed: {e}'], 'steps': [f'render: failed: {e}']}
+
+
+def build_narration_script(document: dict) -> list[str]:
+    title = (document.get('title') or '').strip()
+    summary = (document.get('summary') or '').strip()
+    key_points = document.get('key_points') or []
+    sections = document.get('sections') or []
+    if not title and not summary and not key_points and not sections:
+        return []
+
+    lines: list[str] = []
+    intro = f'视频标题：{title or "未命名视频"}。'
+    if summary:
+        intro += f'内容概述：{summary}。'
+    if key_points:
+        intro += '核心要点：' + '；'.join(str(p) for p in key_points) + '。'
+    lines.append(intro)
+
+    for sec in sections:
+        heading = (sec.get('heading') or '').strip()
+        body = (sec.get('body_md') or '').strip()
+        if not heading and not body:
+            continue
+        script = f'{heading}。' if heading else ''
+        script += body
+        lines.append(script)
+
+    clean: list[str] = []
+    for line in lines:
+        line = line.replace('#', '').replace('*', '').replace('`', '').strip()
+        if line:
+            clean.append(line)
+    return clean
+
+
+def tool_voiceover(state: AgentState) -> dict:
+    from vid2kb.config import settings
+    from vid2kb.media.ffmpeg import probe_duration
+    from vid2kb.media.store import ArtifactStore
+    from vid2kb.tts.cosyvoice import synthesize_speech
+
+    started = time.time()
+    try:
+        document = state.get('document') or {}
+        scripts = build_narration_script(document)
+        if not scripts:
+            _audit(state, 'voiceover', 'error', 'empty narration script', seconds=time.time() - started)
+            return {
+                'errors': state.get('errors', []) + ['voiceover failed: empty document'],
+                'steps': ['voiceover: failed: empty document'],
+            }
+        store = ArtifactStore(state['run_id'])
+        out_dir = store.out / 'voiceover'
+        out_dir.mkdir(parents=True, exist_ok=True)
+        files: list[dict] = []
+        total_seconds = 0.0
+        for i, script in enumerate(scripts, start=1):
+            path = synthesize_speech(
+                script,
+                voice=settings.tts_voice,
+                out_path=out_dir / f'section_{i:02d}.mp3',
+                model=settings.tts_model,
+                sample_rate=settings.tts_sample_rate,
+            )
+            seconds = probe_duration(path)
+            files.append({'index': i, 'path': str(path), 'seconds': seconds})
+            total_seconds += seconds
+        _audit(state, 'voiceover', 'done', note=f'{len(files)} files', seconds=time.time() - started)
+        return {
+            'voiceover': {'files': files, 'total_seconds': total_seconds},
+            'steps': ['voiceover: ok'],
+        }
+    except Exception as e:
+        _audit(state, 'voiceover', 'error', str(e), seconds=time.time() - started)
+        return {
+            'errors': state.get('errors', []) + [f'voiceover failed: {e}'],
+            'steps': [f'voiceover: failed: {e}'],
+        }
 
 
 def tool_ingest_kb(state: AgentState) -> dict:
