@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from email.parser import BytesParser
 from email.policy import default as default_policy
 from pathlib import Path
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 from vid2kb.config import settings
 from vid2kb.jobs import db
 from vid2kb.jobs.worker import run_agent
+from vid2kb.media.store import ArtifactStore
 
 router = APIRouter()
 
@@ -121,7 +123,13 @@ def get_run(run_id: str) -> dict:
 def get_artifact(run_id: str, name: str) -> FileResponse:
     if name not in ARTIFACTS:
         raise HTTPException(status_code=404, detail='unknown artifact')
-    path = Path('data') / 'runs' / run_id / 'out' / name
-    if not path.exists():
-        raise HTTPException(status_code=404, detail='artifact not found')
+    store = ArtifactStore(run_id)
+    if settings.artifact_store == 's3':
+        if not store.exists(f'out/{name}'):
+            raise HTTPException(status_code=404, detail='artifact not found')
+        path = store.get_file(f'out/{name}', Path(tempfile.gettempdir()) / f'vid2kb-{run_id}-{name}')
+    else:
+        path = store.out / name
+        if not path.exists():
+            raise HTTPException(status_code=404, detail='artifact not found')
     return FileResponse(path)

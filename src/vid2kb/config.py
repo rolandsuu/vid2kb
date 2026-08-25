@@ -26,5 +26,11 @@ class Settings:
     frame_interval_seconds: int = int(os.getenv('FRAME_INTERVAL_SECONDS', '3'))
     run_driver: str = os.getenv('RUN_DRIVER', 'background')
     temporal_address: str = os.getenv('TEMPORAL_ADDRESS', '127.0.0.1:7233')
+    artifact_store: str = os.getenv('ARTIFACT_STORE', 'fs')
+    s3_endpoint_url: str = os.getenv('S3_ENDPOINT_URL', 'http://127.0.0.1:9000')
+    s3_access_key: str = os.getenv('S3_ACCESS_KEY', 'minioadmin')
+    s3_secret_key: str = os.getenv('S3_SECRET_KEY', 'minioadmin')
+    s3_bucket: str = os.getenv('S3_BUCKET', 'vid2kb')
+    s3_region: str = os.getenv('S3_REGION', 'us-east-1')
 
 settings = Settings()
